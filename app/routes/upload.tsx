@@ -5,6 +5,7 @@ import {usePuterStore} from "~/lib/puter";
 import {useNavigate} from "react-router";
 import {convertPdfToImage} from "~/lib/pdf2image";
 import {generateUUID} from "~/lib/utils";
+import {prepareInstructions} from "../../constants";
 
 const Upload = () => {
     const {auth, isLoading, fs, ai, kv} = usePuterStore();
@@ -25,13 +26,12 @@ const Upload = () => {
 
         setStatusText('Converting to image...');
         const imageFile = await convertPdfToImage(file);
+        if(!imageFile.file) return setStatusText('Error: Failed to convert PDF to image');
 
-        if(!imageFile) return setStatusText('Error: Failed to convert PDF to image');
-
-        setStatusText('Uploading image...');
+        setStatusText('Uploading the image...');
         const uploadedImage = await fs.upload([imageFile.file]);
-
         if(!uploadedImage) return setStatusText('Error: Failed to upload image');
+
 
         setStatusText('Preparing data...');
 
@@ -44,7 +44,23 @@ const Upload = () => {
             feedback: '',
         }
         await kv.set(`resume:${uuid}`, JSON.stringify(data));
-        setStatusText('Analayzing...');
+        setStatusText('Analyzing...');
+
+        const feedback = await ai.feedback(
+            uploadedFile.path,
+            prepareInstructions({ jobTitle, jobDescription})
+        )
+
+        if(!feedback) return setStatusText('Error: Failed to analyze resume');
+
+        const feedbackText = typeof feedback.message.content === 'string'
+            ? feedback.message.content :
+            feedback.message.content[0].text;
+
+        data.feedback = JSON.parse(feedbackText);
+        await kv.set(`resume:${uuid}`, JSON.stringify(data));
+        setStatusText('Analysis Completed, redirecting..');
+        console.log(data);
 
     }
 
